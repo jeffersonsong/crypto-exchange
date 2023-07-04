@@ -87,12 +87,6 @@ func (l *Limit) DeleteOrder(o *Order) {
 	l.TotalVolume -= o.Size
 }
 
-func DeleteKeepOrder[T any](s []*T, i int) []*T {
-	copy(s[i:], s[i+1:])
-	s[len(s)-1] = nil
-	return s[:len(s)-1]
-}
-
 func (l *Limit) Fill(o *Order) []Match {
 	var (
 		matches        []Match
@@ -228,16 +222,14 @@ func (ob *Orderbook) clearLimit(bid bool, l *Limit) {
 		delete(ob.BidLimits, l.Price)
 		for i := 0; i < len(ob.bids); i++ {
 			if ob.bids[i] == l {
-				ob.bids[i] = ob.bids[len(ob.bids)-1]
-				ob.bids = ob.bids[:len(ob.bids)-1]
+				ob.bids = DeleteOrderChanged(ob.bids, i)
 			}
 		}
 	} else {
 		delete(ob.AskLimits, l.Price)
 		for i := 0; i < len(ob.asks); i++ {
 			if ob.asks[i] == l {
-				ob.asks[i] = ob.asks[len(ob.asks)-1]
-				ob.asks = ob.asks[:len(ob.asks)-1]
+				ob.asks = DeleteOrderChanged(ob.asks, i)
 			}
 		}
 	}
@@ -276,4 +268,15 @@ func (ob *Orderbook) Asks() []*Limit {
 func (ob *Orderbook) Bids() []*Limit {
 	sort.Sort(ByBestBid(ob.bids))
 	return ob.bids
+}
+
+func DeleteKeepOrder[T any](s []*T, i int) []*T {
+	copy(s[i:], s[i+1:])
+	s[len(s)-1] = nil
+	return s[:len(s)-1]
+}
+
+func DeleteOrderChanged[T any](s []*T, i int) []*T {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
