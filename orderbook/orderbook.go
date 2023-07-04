@@ -23,11 +23,11 @@ type Order struct {
 	Timestamp int64
 }
 
-type Orders []*Order
+type ByTimestamp []*Order
 
-func (o Orders) Len() int           { return len(o) }
-func (o Orders) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
-func (o Orders) Less(i, j int) bool { return o[i].Timestamp < o[j].Timestamp }
+func (o ByTimestamp) Len() int           { return len(o) }
+func (o ByTimestamp) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
+func (o ByTimestamp) Less(i, j int) bool { return o[i].Timestamp < o[j].Timestamp }
 
 func NewOrder(bid bool, size float64) *Order {
 	return &Order{
@@ -48,23 +48,21 @@ func (o *Order) IsFilled() bool {
 
 type Limit struct {
 	Price       float64
-	Orders      Orders
+	Orders      []*Order
 	TotalVolume float64
 }
 
-type Limits []*Limit
+type ByBestAsk []*Limit
 
-type ByBestAsk struct{ Limits }
+func (a ByBestAsk) Len() int           { return len(a) }
+func (a ByBestAsk) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByBestAsk) Less(i, j int) bool { return a[i].Price < a[j].Price }
 
-func (a ByBestAsk) Len() int           { return len(a.Limits) }
-func (a ByBestAsk) Swap(i, j int)      { a.Limits[i], a.Limits[j] = a.Limits[j], a.Limits[i] }
-func (a ByBestAsk) Less(i, j int) bool { return a.Limits[i].Price < a.Limits[j].Price }
+type ByBestBid []*Limit
 
-type ByBestBid struct{ Limits }
-
-func (b ByBestBid) Len() int           { return len(b.Limits) }
-func (b ByBestBid) Swap(i, j int)      { b.Limits[i], b.Limits[j] = b.Limits[j], b.Limits[i] }
-func (b ByBestBid) Less(i, j int) bool { return b.Limits[i].Price > b.Limits[j].Price }
+func (b ByBestBid) Len() int           { return len(b) }
+func (b ByBestBid) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b ByBestBid) Less(i, j int) bool { return b[i].Price > b[j].Price }
 
 func NewLimit(price float64) *Limit {
 	return &Limit{
@@ -94,8 +92,7 @@ func (l *Limit) DeleteOrder(o *Order) {
 	o.Limit = nil
 	l.TotalVolume -= o.Size
 
-	// TODO: resort the whole resting orders
-	sort.Sort(l.Orders)
+	sort.Sort(ByTimestamp(l.Orders))
 }
 
 func (l *Limit) Fill(o *Order) []Match {
@@ -274,11 +271,11 @@ func (ob *Orderbook) AskTotalVolume() float64 {
 }
 
 func (ob *Orderbook) Asks() []*Limit {
-	sort.Sort(ByBestAsk{ob.asks})
+	sort.Sort(ByBestAsk(ob.asks))
 	return ob.asks
 }
 
 func (ob *Orderbook) Bids() []*Limit {
-	sort.Sort(ByBestBid{ob.bids})
+	sort.Sort(ByBestBid(ob.bids))
 	return ob.bids
 }
