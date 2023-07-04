@@ -53,61 +53,6 @@ type PlaceOrderRequest struct {
 	Market Market
 }
 
-func (ex *Exchange) cancelOrder(c echo.Context) error {
-	idStr := c.Param("id")
-	id, _ := strconv.Atoi(idStr)
-
-	ob := ex.orderbooks[MarketETH]
-	orderCanceled := false
-
-	for _, limit := range ob.Asks() {
-		for _, order := range limit.Orders {
-			if order.ID == int64(id) {
-				ob.CancelOrder(order)
-				return c.JSON(http.StatusOK, map[string]any{"msg": "Order canceled"})
-			}
-		}
-	}
-
-	if !orderCanceled {
-		for _, limit := range ob.Bids() {
-			for _, order := range limit.Orders {
-				if order.ID == int64(id) {
-					ob.CancelOrder(order)
-					return c.JSON(http.StatusOK, map[string]any{"msg": "Order canceled"})
-				}
-			}
-		}
-	}
-
-	return c.JSON(http.StatusBadRequest, map[string]any{"msg": "Order not found"})
-}
-
-func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
-	var placeOrderData PlaceOrderRequest
-	if err := json.NewDecoder(c.Request().Body).Decode(&placeOrderData); err != nil {
-		return err
-	}
-
-	ob, ok := ex.orderbooks[placeOrderData.Market]
-	if !ok {
-		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "market not found"})
-	}
-
-	order := orderbook.NewOrder(placeOrderData.Bid, placeOrderData.Size)
-	if placeOrderData.Type == LimitOrder {
-		ob.PlaceLimitOrder(placeOrderData.Price, order)
-		return c.JSON(http.StatusOK, map[string]any{"msg": "limit order placed"})
-
-	} else if placeOrderData.Type == MarketOrder {
-		matches := ob.PlaceMarketOrder(order)
-		return c.JSON(http.StatusOK, map[string]any{"matches": len(matches)})
-
-	} else {
-		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "invalid order type"})
-	}
-}
-
 type Order struct {
 	ID        int64
 	Price     float64
@@ -163,4 +108,43 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, orderbookData)
+}
+
+func (ex *Exchange) cancelOrder(c echo.Context) error {
+	idStr := c.Param("id")
+	id, _ := strconv.Atoi(idStr)
+
+	ob := ex.orderbooks[MarketETH]
+	order, ok := ob.Orders[int64(id)]
+
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "Order not found"})
+	}
+	ob.CancelOrder(order)
+	return c.JSON(http.StatusOK, map[string]any{"msg": "Order deleted"})
+}
+
+func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
+	var placeOrderData PlaceOrderRequest
+	if err := json.NewDecoder(c.Request().Body).Decode(&placeOrderData); err != nil {
+		return err
+	}
+
+	ob, ok := ex.orderbooks[placeOrderData.Market]
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "market not found"})
+	}
+
+	order := orderbook.NewOrder(placeOrderData.Bid, placeOrderData.Size)
+	if placeOrderData.Type == LimitOrder {
+		ob.PlaceLimitOrder(placeOrderData.Price, order)
+		return c.JSON(http.StatusOK, map[string]any{"msg": "limit order placed"})
+
+	} else if placeOrderData.Type == MarketOrder {
+		matches := ob.PlaceMarketOrder(order)
+		return c.JSON(http.StatusOK, map[string]any{"matches": len(matches)})
+
+	} else {
+		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "invalid order type"})
+	}
 }
