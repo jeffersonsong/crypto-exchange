@@ -23,12 +23,6 @@ type Order struct {
 	Timestamp int64
 }
 
-type ByTimestamp []*Order
-
-func (o ByTimestamp) Len() int           { return len(o) }
-func (o ByTimestamp) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
-func (o ByTimestamp) Less(i, j int) bool { return o[i].Timestamp < o[j].Timestamp }
-
 func NewOrder(bid bool, size float64) *Order {
 	return &Order{
 		ID:        int64(rand.Intn(1000000)),
@@ -84,15 +78,15 @@ func (l *Limit) AddOrder(o *Order) {
 func (l *Limit) DeleteOrder(o *Order) {
 	for i := 0; i < len(l.Orders); i++ {
 		if l.Orders[i] == o {
-			l.Orders[i] = l.Orders[len(l.Orders)-1]
+			copy(l.Orders[i:], l.Orders[i+1:])
+			l.Orders[len(l.Orders)-1] = nil
 			l.Orders = l.Orders[:len(l.Orders)-1]
+			break
 		}
 	}
 
 	o.Limit = nil
 	l.TotalVolume -= o.Size
-
-	sort.Sort(ByTimestamp(l.Orders))
 }
 
 func (l *Limit) Fill(o *Order) []Match {
