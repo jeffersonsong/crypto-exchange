@@ -78,15 +78,19 @@ func (l *Limit) AddOrder(o *Order) {
 func (l *Limit) DeleteOrder(o *Order) {
 	for i := 0; i < len(l.Orders); i++ {
 		if l.Orders[i] == o {
-			copy(l.Orders[i:], l.Orders[i+1:])
-			l.Orders[len(l.Orders)-1] = nil
-			l.Orders = l.Orders[:len(l.Orders)-1]
+			l.Orders = DeleteKeepOrder(l.Orders, i)
 			break
 		}
 	}
 
 	o.Limit = nil
 	l.TotalVolume -= o.Size
+}
+
+func DeleteKeepOrder[T any](s []*T, i int) []*T {
+	copy(s[i:], s[i+1:])
+	s[len(s)-1] = nil
+	return s[:len(s)-1]
 }
 
 func (l *Limit) Fill(o *Order) []Match {
