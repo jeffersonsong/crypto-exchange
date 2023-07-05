@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,6 +12,7 @@ import (
 
 func main() {
 	e := echo.New()
+	e.HTTPErrorHandler = httpErrorHandler
 	ex := NewExchange()
 
 	e.GET("/book/:market", ex.handleGetBook)
@@ -18,6 +20,10 @@ func main() {
 	e.DELETE("/order/:id", ex.cancelOrder)
 
 	e.Start(":3000")
+}
+
+func httpErrorHandler(err error, c echo.Context) {
+	fmt.Println(err)
 }
 
 type OrderType string
@@ -124,6 +130,12 @@ func (ex *Exchange) cancelOrder(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"msg": "Order deleted"})
 }
 
+type MatchedOrder struct {
+	Price float64
+	Size  float64
+	ID    int64
+}
+
 func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 	var placeOrderData PlaceOrderRequest
 	if err := json.NewDecoder(c.Request().Body).Decode(&placeOrderData); err != nil {
@@ -142,7 +154,22 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 
 	} else if placeOrderData.Type == MarketOrder {
 		matches := ob.PlaceMarketOrder(order)
-		return c.JSON(http.StatusOK, map[string]any{"matches": len(matches)})
+		matchedOrders := make([]*MatchedOrder, len(matches))
+
+		for i, match := range matches {
+			var id int64
+			if match.Ask.Bid != order.Bid {
+				id = match.Ask.ID
+			} else {
+				id = match.Bid.ID
+			}
+			matchedOrders[i] = &MatchedOrder{
+				ID:    id,
+				Size:  match.SizeFilled,
+				Price: match.Price,
+			}
+		}
+		return c.JSON(http.StatusOK, map[string]any{"matches": matchedOrders})
 
 	} else {
 		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "invalid order type"})
