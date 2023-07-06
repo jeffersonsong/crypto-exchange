@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jeffersonsong/crypto-exchange/orderbook"
@@ -96,10 +95,6 @@ func main() {
 	e.DELETE("/order/:id", ex.cancelOrder)
 	e.GET("/balance/:userID", ex.handleGetBalance)
 	e.GET("/balances", ex.handleGetBalances)
-
-	address := "0xACa94ef8bD5ffEE41947b4585a84BdA5a3d3DA6E"
-	balance, _ := ex.Client.BalanceAt(context.Background(), common.HexToAddress(address), nil)
-	fmt.Println(balance)
 
 	e.Start(":3000")
 }
