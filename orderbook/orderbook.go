@@ -17,15 +17,17 @@ type Match struct {
 
 type Order struct {
 	ID        int64
+	UserID    int64
 	Size      float64
 	Bid       bool
 	Limit     *Limit
 	Timestamp int64
 }
 
-func NewOrder(bid bool, size float64) *Order {
+func NewOrder(bid bool, size float64, userID int64) *Order {
 	return &Order{
 		ID:        int64(rand.Intn(1000000)),
+		UserID:    userID,
 		Size:      size,
 		Bid:       bid,
 		Timestamp: time.Now().UnixNano(),
