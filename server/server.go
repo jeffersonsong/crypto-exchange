@@ -92,9 +92,14 @@ func StartServer() {
 		ex.AddUser(userData)
 	}
 
-	e.GET("/book/:market", ex.handleGetBook)
 	e.POST("/order", ex.handlePlaceOrder)
+
+	e.GET("/book/:market", ex.handleGetBook)
+	e.GET("/book/:market/bid", ex.handleGetBestBid)
+	e.GET("/book/:market/ask", ex.handleGetBestAsk)
+
 	e.DELETE("/order/:id", ex.cancelOrder)
+
 	e.GET("/balance/:userID", ex.handleGetBalance)
 	e.GET("/balances", ex.handleGetBalances)
 
@@ -170,7 +175,6 @@ func (ex *Exchange) AddUser(userData UserData) (*User, error) {
 
 func (ex *Exchange) handleGetBook(c echo.Context) error {
 	market := Market(c.Param("market"))
-
 	ob, ok := ex.orderbooks[market]
 	if !ok {
 		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "market not found"})
@@ -198,6 +202,46 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, orderbookData)
+}
+
+type PriceResponse struct {
+	Price float64
+}
+
+func (ex *Exchange) handleGetBestBid(c echo.Context) error {
+	market := Market(c.Param("market"))
+	ob, ok := ex.orderbooks[market]
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "market not found"})
+	}
+	if len(ob.Bids()) == 0 {
+		return fmt.Errorf("The bids are empty")
+	}
+	bestBidPrice := ob.Bids()[0].Price
+
+	pr := PriceResponse{
+		Price: bestBidPrice,
+	}
+
+	return c.JSON(http.StatusOK, pr)
+}
+
+func (ex *Exchange) handleGetBestAsk(c echo.Context) error {
+	market := Market(c.Param("market"))
+	ob, ok := ex.orderbooks[market]
+	if !ok {
+		return c.JSON(http.StatusBadRequest, map[string]any{"msg": "market not found"})
+	}
+	if len(ob.Asks()) == 0 {
+		return fmt.Errorf("The asks are empty")
+	}
+	bestAskPrice := ob.Asks()[0].Price
+
+	pr := PriceResponse{
+		Price: bestAskPrice,
+	}
+
+	return c.JSON(http.StatusOK, pr)
 }
 
 func (ex *Exchange) cancelOrder(c echo.Context) error {

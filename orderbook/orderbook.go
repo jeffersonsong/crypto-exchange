@@ -164,6 +164,9 @@ func NewOrderbook() *Orderbook {
 }
 
 func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
+	ob.mu.Lock()
+	defer ob.mu.Unlock()
+
 	matches := []Match{}
 
 	if o.Bid {
@@ -176,7 +179,7 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 			matches = append(matches, limitMatches...)
 
 			if len(limit.Orders) == 0 {
-				ob.clearLimit(true, limit)
+				ob.clearLimit(!o.Bid, limit)
 			}
 		}
 
@@ -190,7 +193,7 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 			matches = append(matches, limitMatches...)
 
 			if len(limit.Orders) == 0 {
-				ob.clearLimit(true, limit)
+				ob.clearLimit(!o.Bid, limit)
 			}
 		}
 	}
