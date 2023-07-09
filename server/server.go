@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 
@@ -132,6 +133,7 @@ func httpErrorHandler(err error, c echo.Context) {
 
 type Exchange struct {
 	Client *ethclient.Client
+	mu     sync.RWMutex
 	Users  map[int64]*User
 	// Orders map a user to his orders.
 	Orders     map[int64][]*orderbook.Order
@@ -177,19 +179,27 @@ func (ex *Exchange) AddUser(userData UserData) (*User, error) {
 	return user, nil
 }
 
+type GetOrdersResponse struct {
+	Asks []Order
+	Bids []Order
+}
+
 func (ex *Exchange) handleGetOrders(c echo.Context) error {
 	userIDStr := c.Param("userID")
 	userID, err := strconv.Atoi(userIDStr)
 	if err != nil {
 		return err
 	}
+	ex.mu.RLock()
+	defer ex.mu.RUnlock()
 	orderbookOrders := ex.Orders[int64(userID)]
-	orders := []Order{}
+
+	orderResp := &GetOrdersResponse{
+		Asks: []Order{},
+		Bids: []Order{},
+	}
 
 	for _, orderbookOrder := range orderbookOrders {
-		// if orderbookOrder.Size == 0 {
-		// 	continue
-		// }
 		order := Order{
 			UserID:    orderbookOrder.UserID,
 			ID:        orderbookOrder.ID,
@@ -198,10 +208,14 @@ func (ex *Exchange) handleGetOrders(c echo.Context) error {
 			Bid:       orderbookOrder.Bid,
 			Timestamp: orderbookOrder.Timestamp,
 		}
-		orders = append(orders, order)
+		if order.Bid {
+			orderResp.Bids = append(orderResp.Bids, order)
+		} else {
+			orderResp.Asks = append(orderResp.Asks, order)
+		}
 	}
 
-	return c.JSON(http.StatusOK, orders)
+	return c.JSON(http.StatusOK, orderResp)
 }
 
 func (ex *Exchange) handleGetBook(c echo.Context) error {
@@ -320,6 +334,21 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 
 	log.Printf("filled MARKET order => %d | size [%.2f] | avgPrice [%2f]", order.ID, totalSizeFilled, avgPrice)
 
+	newOrderMap := make(map[int64][]*orderbook.Order)
+	ex.mu.RLock()
+
+	for userID, orderbookOrders := range ex.Orders {
+		newOrderMap[userID] = []*orderbook.Order{}
+		for _, orderbookOrder := range orderbookOrders {
+			if !orderbookOrder.IsFilled() {
+				newOrderMap[userID] = append(newOrderMap[userID], orderbookOrder)
+			}
+		}
+	}
+
+	ex.Orders = newOrderMap
+	ex.mu.RUnlock()
+
 	return matches, matchedOrders
 }
 
@@ -328,7 +357,9 @@ func (ex *Exchange) handlePlaceLimitOrder(market Market, price float64, order *o
 	ob.PlaceLimitOrder(price, order)
 
 	// keep track of user orders
+	ex.mu.Lock()
 	ex.Orders[order.UserID] = append(ex.Orders[order.UserID], order)
+	ex.mu.Unlock()
 
 	log.Printf("new LIMIT order => type: [%t] | price [%.2f] | size [%.2f]", order.Bid, order.Limit.Price, order.Size)
 
@@ -361,15 +392,20 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 		_ = matchedOrders
 
 		// Delete the users of the user when filled
-		for _, matchedOrder := range matchedOrders {
-			// if the size if 0 we can delete this order
-			userOrders := ex.Orders[matchedOrder.UserID]
-			for i := 0; i < len(userOrders); i++ {
-				if userOrders[i].IsFilled() && userOrders[i].ID == matchedOrder.ID {
-					ex.Orders[matchedOrder.UserID] = DeleteOrderChanged(userOrders, i)
-				}
-			}
-		}
+		// for _, matchedOrder := range matchedOrders {
+		// 	// if the size if 0 we can delete this order
+		// 	index := -1
+		// 	userOrders := ex.Orders[matchedOrder.UserID]
+		// 	for i := 0; i < len(userOrders); i++ {
+		// 		if userOrders[i].IsFilled() && userOrders[i].ID == matchedOrder.ID {
+		// 			index = i
+		// 			break
+		// 		}
+		// 	}
+		// 	if index != -1 {
+		// 		ex.Orders[matchedOrder.UserID] = DeleteOrderChanged(userOrders, index)
+		// 	}
+		// }
 		// return c.JSON(http.StatusOK, map[string]any{"matches": matchedOrders})
 
 		// } else {
