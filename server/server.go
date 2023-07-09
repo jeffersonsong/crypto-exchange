@@ -10,12 +10,13 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/labstack/echo/v4"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/jeffersonsong/crypto-exchange/orderbook"
-	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -57,9 +58,10 @@ type (
 	}
 
 	MatchedOrder struct {
-		Price float64
-		Size  float64
-		ID    int64
+		UserID int64
+		Price  float64
+		Size   float64
+		ID     int64
 	}
 
 	UserData struct {
@@ -93,6 +95,7 @@ func StartServer() {
 	}
 
 	e.POST("/order", ex.handlePlaceOrder)
+	e.GET("/order/:userID", ex.handleGetOrders)
 
 	e.GET("/book/:market", ex.handleGetBook)
 	e.GET("/book/:market/bid", ex.handleGetBestBid)
@@ -128,9 +131,10 @@ func httpErrorHandler(err error, c echo.Context) {
 }
 
 type Exchange struct {
-	Client     *ethclient.Client
-	Users      map[int64]*User
-	orders     map[int64]int64
+	Client *ethclient.Client
+	Users  map[int64]*User
+	// Orders map a user to his orders.
+	Orders     map[int64][]*orderbook.Order
 	PrivateKey *ecdsa.PrivateKey
 	orderbooks map[Market]*orderbook.Orderbook
 }
@@ -146,7 +150,7 @@ func NewExchange(privateKey string, client *ethclient.Client) (*Exchange, error)
 	return &Exchange{
 		Client:     client,
 		Users:      make(map[int64]*User),
-		orders:     make(map[int64]int64),
+		Orders:     make(map[int64][]*orderbook.Order),
 		PrivateKey: pk,
 		orderbooks: orderbooks,
 	}, nil
@@ -171,6 +175,33 @@ func (ex *Exchange) AddUser(userData UserData) (*User, error) {
 	user := NewUser(userData.PrivateKey, userData.ID)
 	ex.Users[user.ID] = user
 	return user, nil
+}
+
+func (ex *Exchange) handleGetOrders(c echo.Context) error {
+	userIDStr := c.Param("userID")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		return err
+	}
+	orderbookOrders := ex.Orders[int64(userID)]
+	orders := []Order{}
+
+	for _, orderbookOrder := range orderbookOrders {
+		// if orderbookOrder.Size == 0 {
+		// 	continue
+		// }
+		order := Order{
+			UserID:    orderbookOrder.UserID,
+			ID:        orderbookOrder.ID,
+			Price:     orderbookOrder.Limit.Price,
+			Size:      orderbookOrder.Size,
+			Bid:       orderbookOrder.Bid,
+			Timestamp: orderbookOrder.Timestamp,
+		}
+		orders = append(orders, order)
+	}
+
+	return c.JSON(http.StatusOK, orders)
 }
 
 func (ex *Exchange) handleGetBook(c echo.Context) error {
@@ -269,16 +300,17 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 	totalSizeFilled := 0.0
 	totalAmount := 0.0
 	for i, match := range matches {
-		var id int64
+		var limitOrder *orderbook.Order
 		if match.Ask.Bid != order.Bid {
-			id = match.Ask.ID
+			limitOrder = match.Ask
 		} else {
-			id = match.Bid.ID
+			limitOrder = match.Bid
 		}
 		matchedOrders[i] = &MatchedOrder{
-			ID:    id,
-			Size:  match.SizeFilled,
-			Price: match.Price,
+			UserID: limitOrder.UserID,
+			ID:     limitOrder.ID,
+			Size:   match.SizeFilled,
+			Price:  match.Price,
 		}
 		totalSizeFilled += match.SizeFilled
 		totalAmount += match.Price * match.SizeFilled
@@ -294,6 +326,9 @@ func (ex *Exchange) handlePlaceMarketOrder(market Market, order *orderbook.Order
 func (ex *Exchange) handlePlaceLimitOrder(market Market, price float64, order *orderbook.Order) error {
 	ob := ex.orderbooks[market]
 	ob.PlaceLimitOrder(price, order)
+
+	// keep track of user orders
+	ex.Orders[order.UserID] = append(ex.Orders[order.UserID], order)
 
 	log.Printf("new LIMIT order => type: [%t] | price [%.2f] | size [%.2f]", order.Bid, order.Limit.Price, order.Size)
 
@@ -324,6 +359,17 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 			return err
 		}
 		_ = matchedOrders
+
+		// Delete the users of the user when filled
+		for _, matchedOrder := range matchedOrders {
+			// if the size if 0 we can delete this order
+			userOrders := ex.Orders[matchedOrder.UserID]
+			for i := 0; i < len(userOrders); i++ {
+				if userOrders[i].IsFilled() && userOrders[i].ID == matchedOrder.ID {
+					ex.Orders[matchedOrder.UserID] = DeleteOrderChanged(userOrders, i)
+				}
+			}
+		}
 		// return c.JSON(http.StatusOK, map[string]any{"matches": matchedOrders})
 
 		// } else {
@@ -435,4 +481,9 @@ func transferETH(client *ethclient.Client, fromPrivKey *ecdsa.PrivateKey, to com
 	}
 
 	return client.SendTransaction(ctx, signedTx)
+}
+
+func DeleteOrderChanged[T any](s []*T, i int) []*T {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
