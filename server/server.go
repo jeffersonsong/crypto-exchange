@@ -200,6 +200,9 @@ func (ex *Exchange) handleGetOrders(c echo.Context) error {
 	}
 
 	for _, orderbookOrder := range orderbookOrders {
+		if orderbookOrder.Limit == nil {
+			continue
+		}
 		order := Order{
 			UserID:    orderbookOrder.UserID,
 			ID:        orderbookOrder.ID,

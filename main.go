@@ -22,13 +22,24 @@ func marketOrderPlacer(c *client.Client) {
 	ticker := time.NewTicker(5 * time.Second)
 
 	for {
+		otherMarketSellOrder := &client.PlaceOrderParams{
+			UserID: 8,
+			Bid:    false,
+			Size:   5000,
+		}
+
+		orderResp, err := c.PlaceMarketOrder(otherMarketSellOrder)
+		if err != nil {
+			log.Println(orderResp.OrderID)
+		}
+
 		marketSellOrder := &client.PlaceOrderParams{
 			UserID: 666,
 			Bid:    false,
-			Size:   1000,
+			Size:   3000,
 		}
 
-		orderResp, err := c.PlaceMarketOrder(marketSellOrder)
+		orderResp, err = c.PlaceMarketOrder(marketSellOrder)
 		if err != nil {
 			log.Println(orderResp.OrderID)
 		}
@@ -48,11 +59,13 @@ func marketOrderPlacer(c *client.Client) {
 	}
 }
 
+const userID = 7
+
 func makeMarketSimple(c *client.Client) {
 	ticker := time.NewTicker(tick)
 
 	for {
-		orders, err := c.GetOrders(7)
+		orders, err := c.GetOrders(userID)
 		if err != nil {
 			log.Println(err)
 		}
@@ -72,7 +85,7 @@ func makeMarketSimple(c *client.Client) {
 		// place the bid
 		if len(orders.Bids) < maxOrders {
 			bidLimit := &client.PlaceOrderParams{
-				UserID: 7,
+				UserID: userID,
 				Bid:    true,
 				Price:  bestBid + 100,
 				Size:   1000,
@@ -87,7 +100,7 @@ func makeMarketSimple(c *client.Client) {
 		// place the ask
 		if len(orders.Asks) < maxOrders {
 			askLimit := &client.PlaceOrderParams{
-				UserID: 7,
+				UserID: userID,
 				Bid:    false,
 				Price:  bestAsk - 100,
 				Size:   1000,
@@ -108,14 +121,14 @@ func seedMarket(c *client.Client) error {
 		UserID: 8,
 		Bid:    false,
 		Price:  10_000.0,
-		Size:   1_000_000.0,
+		Size:   10_000.0,
 	}
 
 	bid := &client.PlaceOrderParams{
 		UserID: 8,
 		Bid:    true,
 		Price:  9_000.0,
-		Size:   1_000_000.0,
+		Size:   10_000.0,
 	}
 
 	_, err := c.PlaceLimitOrder(ask)
